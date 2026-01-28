@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .resnet import resnet50  # Import the existing modules resnet
 
 import torch
 import torch.nn as nn

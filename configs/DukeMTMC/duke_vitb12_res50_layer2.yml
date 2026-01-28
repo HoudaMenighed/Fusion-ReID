@@ -5,7 +5,7 @@ MODEL:
   RES_MODE : 1
   HTM_LAYER : 2
   MIX_DIM : 768
-  PRETRAIN_PATH_R : '/content/FusionReID/resnet50-0676ba61.pth'
+  PRETRAIN_PATH_R : '/content/logs/pretrain/resnet50-19c8e357.pth'
   PRETRAIN_PATH_T : '/content/logs/pretrain/jx_vit_base_p16_224-80ecf9dd.pth'
   TRANSFORMER_TYPE: 'vit_base_patch16_224'
   STRIDE_SIZE: [12, 12]

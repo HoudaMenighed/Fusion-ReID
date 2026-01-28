@@ -15,8 +15,8 @@ _C.MODEL.NAME = 'FusionReID'
 # Last stride of backbone
 _C.MODEL.LAST_STRIDE = 1
 # Path to pretrained model of backbone
-_C.MODEL.PRETRAIN_PATH_R = 'your CNN pretrained model path'
-_C.MODEL.PRETRAIN_PATH_T = 'your Transformer pretrained model path'
+_C.MODEL.PRETRAIN_PATH_R = '/content/logs/pretrain/resnet50-19c8e357.pth'
+_C.MODEL.PRETRAIN_PATH_T = '/content/logs/pretrain/jx_vit_base_p16_224-80ecf9dd.pth'
 # Whether to use in the dual branch network
 _C.MODEL.RES_USE = 1
 _C.MODEL.TRANS_USE = 1
