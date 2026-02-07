@@ -31,5 +31,5 @@ TEST:
   NECK_FEAT: 'before'
   FEAT_NORM: 'yes'
 
-OUTPUT_DIR: './dukemtmc_vitb12_res50_layer2_256'
+OUTPUT_DIR: '/content/drive/MyDrive/dukemtmc_vitb12_res50_layer2_256'
 

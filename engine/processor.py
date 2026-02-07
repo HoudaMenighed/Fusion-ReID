@@ -18,7 +18,7 @@ def do_train(cfg,
              optimizer_center,
              scheduler,
              loss_fn,
-             num_query, local_rank):
+             num_query, local_rank, start_epoch):
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
     eval_period = cfg.SOLVER.EVAL_PERIOD
@@ -42,7 +42,7 @@ def do_train(cfg,
     evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)
     scaler = amp.GradScaler()
     # train
-    for epoch in range(1, epochs + 1):
+    for epoch in range(start_epoch + 1, epochs + 1):
         start_time = time.time()
         loss_meter.reset()
         acc_meter.reset()
@@ -58,7 +58,7 @@ def do_train(cfg,
             target_view = target_view.to(device)
             with amp.autocast(enabled=True):
                 if cfg.MODEL.RES_USE and cfg.MODEL.TRANS_USE:
-                    cls_score_r, global_feat_r, cls_score_f, global_feat_f, cls_score_1, global_feat_1, cls_score_2, \
+                    """cls_score_r, global_feat_r, cls_score_f, global_feat_f, cls_score_1, global_feat_1, cls_score_2, \
                         global_feat_2, cls_score_3, global_feat_3, cls_score_4, global_feat_4 = model(
                         img,
                         label=target,
@@ -71,7 +71,26 @@ def do_train(cfg,
                     loss_4 = loss_fn(cls_score_2, global_feat_2, target, target_cam)
                     loss_5 = loss_fn(cls_score_3, global_feat_3, target, target_cam)
                     loss_6 = loss_fn(cls_score_4, global_feat_4, target, target_cam)
-                    loss = loss_1 + loss_2 + loss_3 + loss_4 + loss_5 + loss_6
+                    loss = loss_1 + loss_2 + loss_3 + loss_4 + loss_5 + loss_6"""
+                    # Unpack only the 6 values your SAPH-Net model actually returns
+                    cls_score_r, global_feat_r, \
+                        cls_score_f, global_feat_f, \
+                        cls_score_fused, global_feat_fused = model(
+                        img,
+                        label=target,
+                        cam_label=target_cam,
+                        view_label=target_view)
+
+                    # Calculate Loss for each stream
+                    # 1. CNN Branch Loss
+                    loss_1 = loss_fn(cls_score_r, global_feat_r, target, target_cam)
+                    # 2. Transformer Branch Loss
+                    loss_2 = loss_fn(cls_score_f, global_feat_f, target, target_cam)
+                    # 3. SAPH Cross-Attention Fusion Loss
+                    loss_3 = loss_fn(cls_score_fused, global_feat_fused, target, target_cam)
+
+                    # Total combined loss
+                    loss = loss_1 + loss_2 + loss_3
                 else:
                     cls_score_r, global_feat_r = model(
                         img,
@@ -112,14 +131,6 @@ def do_train(cfg,
             logger.info("Epoch {} done. Time per batch: {:.3f}[s] Speed: {:.1f}[samples/s]"
                         .format(epoch, time_per_batch, train_loader.batch_size / time_per_batch))
 
-        if epoch % checkpoint_period == 0:
-            if cfg.MODEL.DIST_TRAIN:
-                if dist.get_rank() == 0:
-                    torch.save(model.state_dict(),
-                               os.path.join(cfg.OUTPUT_DIR, cfg.MODEL.NAME + '_{}.pth'.format(epoch)))
-            else:
-                torch.save(model.state_dict(),
-                           os.path.join(cfg.OUTPUT_DIR, cfg.MODEL.NAME + '_{}.pth'.format(epoch)))
 
         if epoch % eval_period == 0:
             if cfg.MODEL.DIST_TRAIN:
@@ -130,6 +141,7 @@ def do_train(cfg,
                             img = img.to(device)
                             camids = camids.to(device)
                             target_view = target_view.to(device)
+                            # Your model returns ONE tensor during eval, so this is correct:
                             feat = model(img, cam_label=camids, view_label=target_view)
                             evaluator.update((feat, vid, camid))
                     cmc, mAP, _, _, _, _, _ = evaluator.compute()
@@ -145,6 +157,7 @@ def do_train(cfg,
                         img = img.to(device)
                         camids = camids.to(device)
                         target_view = target_view.to(device)
+                        # Your model returns ONE tensor during eval, so this is correct:
                         feat = model(img, cam_label=camids, view_label=target_view)
                         evaluator.update((feat, vid, camid))
                 cmc, mAP, _, _, _, _, _ = evaluator.compute()
@@ -153,6 +166,24 @@ def do_train(cfg,
                 for r in [1, 5, 10]:
                     logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
                 torch.cuda.empty_cache()
+
+        if epoch % checkpoint_period == 0:
+            if cfg.MODEL.DIST_TRAIN:
+                if dist.get_rank() == 0:
+                    torch.save({
+                        'model': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'scheduler': scheduler.state_dict(),
+                        'epoch': epoch,
+                    }, os.path.join(cfg.OUTPUT_DIR, cfg.MODEL.NAME + '_{}.pth'.format(epoch)))
+
+            else:
+                torch.save({
+                    'model': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                    'epoch': epoch,
+                }, os.path.join(cfg.OUTPUT_DIR, cfg.MODEL.NAME + '_{}.pth'.format(epoch)))
 
 def do_inference(cfg,
                  model,

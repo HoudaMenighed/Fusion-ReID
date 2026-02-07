@@ -87,6 +87,22 @@ if __name__ == '__main__':
     optimizer, optimizer_center = make_optimizer(cfg, model, center_criterion)
 
     scheduler = create_scheduler(cfg, optimizer)
+
+    start_epoch = 0
+
+    if cfg.SOLVER.RESUME and cfg.MODEL.PRETRAIN_PATH:
+        print("=> Resuming from checkpoint:", cfg.MODEL.PRETRAIN_PATH)
+        checkpoint = torch.load(cfg.MODEL.PRETRAIN_PATH, map_location='cpu')
+
+        model.load_state_dict(checkpoint['model'])
+
+        if 'optimizer' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer'])
+
+        if 'scheduler' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler'])
+
+
     do_train(
         cfg,
         model,
@@ -97,5 +113,7 @@ if __name__ == '__main__':
         optimizer_center,
         scheduler,
         loss_func,
-        num_query, args.local_rank
+        num_query,
+        args.local_rank,
+        start_epoch
     )

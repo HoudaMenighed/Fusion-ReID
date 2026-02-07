@@ -23,6 +23,8 @@ _C.MODEL.TRANS_USE = 1
 # Use ImageNet pretrained model to initialize backbone or use self trained model to initialize the whole model
 # Options: 'imagenet' or 'self'
 _C.MODEL.PRETRAIN_CHOICE = 'imagenet'
+# Path to full FusionReID checkpoint (for resume)
+_C.MODEL.PRETRAIN_PATH = "/content/drive/MyDrive/fusionreid/checkpoint_epoch_50.pth"
 # Choose different resnet backbone (1->resnet50||2->resnet101||3->resnet152)
 _C.MODEL.RES_MODE = 1
 # Layer of HTM
@@ -103,6 +105,8 @@ _C.SOLVER = CN()
 _C.SOLVER.OPTIMIZER_NAME = "SGD"
 # Number of max epoches
 _C.SOLVER.MAX_EPOCHS = 180
+# Resume training from checkpoint
+_C.SOLVER.RESUME = True
 # Base learning rate
 _C.SOLVER.BASE_LR = 0.005
 # Factor of learning bias
@@ -143,7 +147,7 @@ _C.SOLVER.COSINE_SCALE = 30
 _C.SOLVER.SEED = 1111
 _C.MODEL.NO_MARGIN = True
 # epoch number of saving checkpoints
-_C.SOLVER.CHECKPOINT_PERIOD = 180
+_C.SOLVER.CHECKPOINT_PERIOD = 10
 # iteration of display training log
 _C.SOLVER.LOG_PERIOD = 100
 # epoch number of validation

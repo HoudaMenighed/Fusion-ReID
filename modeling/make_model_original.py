@@ -179,22 +179,21 @@ class build_resnet(nn.Module):
         if self.training:
             cls_score = self.classifier(feat)
             if self.mode == 0:
-                return mid_fea_refined, cls_score, global_feat
+                return cls_score, global_feat
             else:
                 # Return the refined multi-scale features for the Transformer/Fusion branch
                 return mid_fea_refined, cls_score, global_feat
         else:
-            cls_score = None
             if self.neck_feat == 'after':
                 if self.mode == 0:
                     return feat
                 else:
-                    return mid_fea_refined,cls_score, feat
+                    return mid_fea_refined, feat
             else:
                 if self.mode == 0:
                     return global_feat
                 else:
-                    return mid_fea_refined,cls_score, global_feat
+                    return mid_fea_refined, global_feat
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
         if 'state_dict' in param_dict:
@@ -266,7 +265,7 @@ class build_transformer(nn.Module):
             else:
                 cls_score = self.classifier(feat)
             if self.mode == 0:
-                return mid_fea_f, cls_score, global_feat
+                return cls_score, global_feat
             else:
                 return mid_fea_f, cls_score, global_feat  # global feature for triplet loss
         else:
@@ -324,11 +323,6 @@ class FusionReID(nn.Module):
         self.resnet = build_resnet(num_classes, cfg)
         self.transformer = build_transformer(num_classes, cfg, camera_num, view_num, factory)
 
-        self.num_classes = num_classes
-        self.cfg = cfg
-        self.camera = camera_num
-        self.view = view_num
-
         self.mix_dim = cfg.MODEL.MIX_DIM  # Usually 512 or 768
 
         # 2. Projection Layers (Alignment)
@@ -344,8 +338,8 @@ class FusionReID(nn.Module):
         self.CAF = nn.MultiheadAttention(embed_dim=self.mix_dim, num_heads=8, batch_first=True)
 
         # GAP for CNN spatial features
-        self.gap_f = GeM()
         self.gap_r = GeM()
+        self.num_classes = num_classes
 
         # 4. Multi-head Classifiers (Keeping the project's structure for multi-loss training)
         # We will use Classifier 3 & 4 for our Fused features
@@ -388,7 +382,7 @@ class FusionReID(nn.Module):
             return F.normalize(fused_feat, p=2, dim=1)
 
 
-"""class FusionReID(nn.Module):
+class FusionReID(nn.Module):
     def __init__(self, num_classes, cfg, camera_num, view_num, factory):
         super(FusionReID, self).__init__()
         self.resnet = build_resnet(num_classes, cfg)
@@ -569,7 +563,7 @@ class FusionReID(nn.Module):
             elif self.test_feat == 5:
                 return feat_3
             elif self.test_feat == 6:
-                return feat_4"""
+                return feat_4
 
 
 __factory_T_type = {
