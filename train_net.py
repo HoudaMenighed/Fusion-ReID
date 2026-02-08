@@ -89,12 +89,13 @@ if __name__ == '__main__':
     scheduler = create_scheduler(cfg, optimizer)
 
     start_epoch = 0
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if cfg.SOLVER.RESUME and cfg.MODEL.PRETRAIN_PATH:
         print("=> Resuming from checkpoint:", cfg.MODEL.PRETRAIN_PATH)
-        checkpoint = torch.load(cfg.MODEL.PRETRAIN_PATH, map_location='cpu')
+        checkpoint = torch.load(cfg.MODEL.PRETRAIN_PATH, map_location=device)
 
         model.load_state_dict(checkpoint['model'])
+        model = model.to('cuda')
 
         if 'optimizer' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
@@ -102,6 +103,8 @@ if __name__ == '__main__':
         if 'scheduler' in checkpoint:
             scheduler.load_state_dict(checkpoint['scheduler'])
 
+        if 'epoch' in checkpoint:
+            start_epoch = checkpoint['epoch']
 
     do_train(
         cfg,

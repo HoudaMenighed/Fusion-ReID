@@ -24,7 +24,7 @@ _C.MODEL.TRANS_USE = 1
 # Options: 'imagenet' or 'self'
 _C.MODEL.PRETRAIN_CHOICE = 'imagenet'
 # Path to full FusionReID checkpoint (for resume)
-_C.MODEL.PRETRAIN_PATH = "/content/drive/MyDrive/fusionreid/checkpoint_epoch_50.pth"
+_C.MODEL.PRETRAIN_PATH = "/content/drive/MyDrive/FusionReID_60.pth"
 # Choose different resnet backbone (1->resnet50||2->resnet101||3->resnet152)
 _C.MODEL.RES_MODE = 1
 # Layer of HTM
