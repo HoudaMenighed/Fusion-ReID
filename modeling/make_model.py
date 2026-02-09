@@ -270,6 +270,7 @@ class build_transformer(nn.Module):
             else:
                 return mid_fea_f, cls_score, global_feat  # global feature for triplet loss
         else:
+            cls_score = None
             if self.neck_feat == 'after':
                 if self.mode == 0:
                     return feat
@@ -279,7 +280,7 @@ class build_transformer(nn.Module):
                 if self.mode == 0:
                     return global_feat
                 else:
-                    return mid_fea_f, global_feat
+                    return mid_fea_f, cls_score, global_feat
 
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
