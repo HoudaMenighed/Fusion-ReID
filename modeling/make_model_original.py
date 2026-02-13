@@ -481,8 +481,8 @@ class FusionReID(nn.Module):
     def forward(self, x, label=None, cam_label=0, view_label=None):
         if self.training:
             B = x.shape[0]
-            mid_fea_r, cls_score_r, global_feat_r = self.resnet(x)
-            mid_fea_f, cls_score_f, global_feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
+            mid_fea_r, global_feat_r = self.resnet(x)
+            mid_fea_f, global_feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
             # # resnet feature conv
             mid_fea_r = self.res_LRU(mid_fea_r)
             local_res = self.gap_r(mid_fea_r)
