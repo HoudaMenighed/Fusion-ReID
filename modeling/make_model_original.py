@@ -516,8 +516,8 @@ class FusionReID(nn.Module):
                 cls_score_2, global_feat_2, cls_score_3, global_feat_3, cls_score_4, global_feat_4
         else:
             B = x.shape[0]
-            mid_fea_r, feat_r = self.resnet(x)
-            mid_fea_f, feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
+            mid_fea_r, cls_score_r, global_feat_r = self.resnet(x)
+            mid_fea_f, cls_score_f, global_feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
             # resnet feature conv
             mid_fea_r = self.res_LRU(mid_fea_r)
             local_res = self.gap_r(mid_fea_r)
