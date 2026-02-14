@@ -5,8 +5,8 @@ MODEL:
   RES_MODE : 1
   HTM_LAYER : 2
   MIX_DIM : 768
-  PRETRAIN_PATH_R : 'your resnet50 pretrained path'
-  PRETRAIN_PATH_T : 'your vit-base pretrained path'
+  PRETRAIN_PATH_R : '/content/logs/pretrain/resnet50-19c8e357.pth'
+  PRETRAIN_PATH_T : '/content/logs/pretrain/jx_vit_base_p16_224-80ecf9dd.pth'
   TRANSFORMER_TYPE: 'vit_base_patch16_224'
   STRIDE_SIZE: [12, 12]
   SIE_CAMERA: True
@@ -31,5 +31,5 @@ TEST:
   NECK_FEAT: 'before'
   FEAT_NORM: 'yes'
 
-OUTPUT_DIR: './market1501_vitb12_res50_layer2'
+OUTPUT_DIR: '/content/drive/MyDrive/market1501_vitb12_res50_layer2'
 
