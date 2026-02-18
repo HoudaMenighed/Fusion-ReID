@@ -1,3 +1,5 @@
+#==================== Training Account : menmecho@gmail.com (V4)
+
 import torch
 import torch.nn as nn
 from modeling.backbones.resnet import ResNet, Bottleneck
@@ -51,74 +53,6 @@ class GeM(nn.Module):
         return self.__class__.__name__ + '(' + 'p=' + '{:.4f}'.format(self.p.data.tolist()[0]) + ', ' + 'eps=' + str(
             self.eps) + ')'
 
-
-"""class build_resnet(nn.Module):
-    def __init__(self, num_classes, cfg):
-        super(build_resnet, self).__init__()
-        last_stride = cfg.MODEL.LAST_STRIDE
-        model_path = cfg.MODEL.PRETRAIN_PATH_R
-        self.mode = cfg.MODEL.TRANS_USE
-        pretrain_choice = cfg.MODEL.PRETRAIN_CHOICE
-        self.neck = cfg.MODEL.NECK
-        self.neck_feat = cfg.TEST.NECK_FEAT
-
-        self.in_planes = 2048
-        self.pattern = cfg.MODEL.RES_MODE
-        if self.pattern == 1:
-            self.base = ResNet(last_stride=last_stride,
-                               block=Bottleneck,
-                               layers=[3, 4, 6, 3])
-        elif self.pattern == 2:
-            self.base = ResNet(last_stride=last_stride,
-                               block=Bottleneck,
-                               layers=[3, 4, 23, 3])
-        elif self.pattern == 3:
-            self.base = ResNet(last_stride=last_stride,
-                               block=Bottleneck,
-                               layers=[3, 8, 36, 3])
-
-        if pretrain_choice == 'imagenet':
-            self.base.load_param(model_path)
-            print('Loading pretrained ImageNet model......from {}'.format(model_path))
-
-        self.gap = GeM()
-        self.num_classes = num_classes
-
-        self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
-        self.classifier.apply(weights_init_classifier)
-
-        self.bottleneck = nn.BatchNorm1d(self.in_planes)
-        self.bottleneck.bias.requires_grad_(False)
-        self.bottleneck.apply(weights_init_kaiming)
-
-    def forward(self, x, cam_label=None, view_label=None, label=None):  # label is unused if self.cos_layer == 'no'
-        mid_fea = self.base(x)
-        global_feat = self.gap(mid_fea)
-        global_feat = global_feat.view(global_feat.shape[0], -1)  # flatten to (bs, 2048)
-
-        if self.neck == 'no':
-            feat = global_feat
-        elif self.neck == 'bnneck':
-            feat = self.bottleneck(global_feat)
-
-        if self.training:
-
-            cls_score = self.classifier(feat)
-            if self.mode == 0:
-                return cls_score, global_feat
-            else:
-                return mid_fea, cls_score, global_feat
-        else:
-            if self.neck_feat == 'after':
-                if self.mode == 0:
-                    return feat
-                else:
-                    return mid_fea, feat
-            else:
-                if self.mode == 0:
-                    return global_feat
-                else:
-                    return mid_fea, global_feat"""
 
 class build_resnet(nn.Module):
     def __init__(self, num_classes, cfg):
@@ -179,21 +113,22 @@ class build_resnet(nn.Module):
         if self.training:
             cls_score = self.classifier(feat)
             if self.mode == 0:
-                return cls_score, global_feat
+                return mid_fea_refined, cls_score, global_feat
             else:
                 # Return the refined multi-scale features for the Transformer/Fusion branch
                 return mid_fea_refined, cls_score, global_feat
         else:
+            cls_score = None
             if self.neck_feat == 'after':
                 if self.mode == 0:
                     return feat
                 else:
-                    return mid_fea_refined, feat
+                    return mid_fea_refined,cls_score, feat
             else:
                 if self.mode == 0:
                     return global_feat
                 else:
-                    return mid_fea_refined, global_feat
+                    return mid_fea_refined,cls_score, global_feat
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
         if 'state_dict' in param_dict:
@@ -265,10 +200,11 @@ class build_transformer(nn.Module):
             else:
                 cls_score = self.classifier(feat)
             if self.mode == 0:
-                return cls_score, global_feat
+                return mid_fea_f, cls_score, global_feat
             else:
                 return mid_fea_f, cls_score, global_feat  # global feature for triplet loss
         else:
+            cls_score = None
             if self.neck_feat == 'after':
                 if self.mode == 0:
                     return feat
@@ -278,7 +214,7 @@ class build_transformer(nn.Module):
                 if self.mode == 0:
                     return global_feat
                 else:
-                    return mid_fea_f, global_feat
+                    return mid_fea_f, cls_score, global_feat
 
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
@@ -316,189 +252,103 @@ class LocalRefinementUnits(nn.Module):
         return x
 
 
-
 class FusionReID(nn.Module):
     def __init__(self, num_classes, cfg, camera_num, view_num, factory):
         super(FusionReID, self).__init__()
+
+        # Backbone branches
         self.resnet = build_resnet(num_classes, cfg)
-        self.transformer = build_transformer(num_classes, cfg, camera_num, view_num, factory)
+        self.transformer = build_transformer(
+            num_classes, cfg, camera_num, view_num, factory
+        )
 
         self.num_classes = num_classes
-        self.cfg = cfg
-        self.camera = camera_num
-        self.view = view_num
-
         self.mix_dim = cfg.MODEL.MIX_DIM
-        self.htm_layer = cfg.MODEL.HTM_LAYER
+
+        # Projection Layers (LRU)
         self.res_LRU = LocalRefinementUnits(dim=2048, out_dim=self.mix_dim)
-        if 'swin' in cfg.MODEL.TRANSFORMER_TYPE or 'large' in cfg.MODEL.TRANSFORMER_TYPE:
-            self.dim_l = 1024
-        elif '14' in cfg.MODEL.TRANSFORMER_TYPE:
-            self.dim_l = 384
-        else:
-            self.dim_l = 768
-        self.former_LRU = LocalRefinementUnits(dim=self.dim_l, out_dim=self.mix_dim)
-        self.gap_f = GeM()
+
+        dim_l = 384 if '14' in cfg.MODEL.TRANSFORMER_TYPE else 768
+        self.former_LRU = LocalRefinementUnits(dim=dim_l, out_dim=self.mix_dim)
+
+        # Asymmetric Cross Attention
+        self.CAF = nn.MultiheadAttention(
+            embed_dim=self.mix_dim,
+            num_heads=8,
+            batch_first=True
+        )
+
+        # ---- NEW: Dynamic Gating Mechanism ----
+        self.gate_mlp = nn.Sequential(
+            nn.Linear(self.mix_dim * 2, self.mix_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.mix_dim, self.mix_dim),
+            nn.Sigmoid()
+        )
+
+        # Pooling for CNN global descriptor (for gating)
         self.gap_r = GeM()
-        self.HTM = Heterogenous_Transmission_Module(depth=self.htm_layer, embed_dim=self.mix_dim)
-        self.neck = cfg.MODEL.NECK
-        self.neck_feat = cfg.TEST.NECK_FEAT
-        self.ID_LOSS_TYPE = cfg.MODEL.ID_LOSS_TYPE
-        if 'swin' in cfg.MODEL.TRANSFORMER_TYPE or 'large' in cfg.MODEL.TRANSFORMER_TYPE or 't2t' in cfg.MODEL.TRANSFORMER_TYPE:
-            self.patch_num = (512, 16, 8)
-        elif 'edge' in cfg.MODEL.TRANSFORMER_TYPE:
-            self.patch_num = (384, 8, 8)
-        else:
-            self.patch_num = (768, 21, 10)
-        if '14' in cfg.MODEL.TRANSFORMER_TYPE:
-            self.patch_num = (384, 16, 8)
-        if cfg.MODEL.STRIDE_SIZE[0] == 16 and cfg.INPUT.SIZE_TRAIN[0] == 256:
-            self.patch_num = (self.patch_num[0], 16, 8)
-        elif cfg.MODEL.STRIDE_SIZE[0] == 16 and cfg.INPUT.SIZE_TRAIN[0] == 384:
-            self.patch_num = (self.patch_num[0], 24, 8)
-        elif cfg.MODEL.STRIDE_SIZE[0] == 12 and cfg.INPUT.SIZE_TRAIN[0] == 384:
-            self.patch_num = (self.patch_num[0], 31, 10)
-        self.classifier_1 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
-        self.classifier_1.apply(weights_init_classifier)
 
-        self.bottleneck_1 = nn.BatchNorm1d(self.mix_dim)
-        self.bottleneck_1.bias.requires_grad_(False)
-        self.bottleneck_1.apply(weights_init_kaiming)
-
-        self.classifier_2 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
-        self.classifier_2.apply(weights_init_classifier)
-
-        self.bottleneck_2 = nn.BatchNorm1d(self.mix_dim)
-        self.bottleneck_2.bias.requires_grad_(False)
-        self.bottleneck_2.apply(weights_init_kaiming)
-
-        self.classifier_3 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
-        self.classifier_3.apply(weights_init_classifier)
-
+        # Classifier
         self.bottleneck_3 = nn.BatchNorm1d(self.mix_dim)
-        self.bottleneck_3.bias.requires_grad_(False)
-        self.bottleneck_3.apply(weights_init_kaiming)
-
-        self.classifier_4 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
-        self.classifier_4.apply(weights_init_classifier)
-
-        self.bottleneck_4 = nn.BatchNorm1d(self.mix_dim)
-        self.bottleneck_4.bias.requires_grad_(False)
-        self.bottleneck_4.apply(weights_init_kaiming)
-        self.test_feat = cfg.TEST.FEAT
-
-    def load_param(self, trained_path):
-        param_dict = torch.load(trained_path)
-        for i in param_dict:
-            self.state_dict()[i.replace('module.', '')].copy_(param_dict[i])
-        print('Loading pretrained model from {}'.format(trained_path))
-
-    def get_attn(self, x, k, label=None, cam_label=0, view_label=None):
-        if not self.training:
-            B = x.shape[0]
-            mid_fea_r, feat_r = self.resnet(x)
-            mid_fea_f, feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
-            # resnet feature conv
-            mid_fea_r = self.res_LRU(mid_fea_r)
-            local_res = self.gap_r(mid_fea_r)
-            mid_fea_r = mid_fea_r.reshape(B, self.mix_dim, -1).permute(0, 2, 1)
-            # former feature conv
-            C, H, W = self.patch_num
-            mid_fea_f = mid_fea_f.permute(0, 2, 1).reshape(B, int(C), int(H), int(W))
-            mid_fea_f = self.former_LRU(mid_fea_f)
-            local_former = self.gap_f(mid_fea_f)
-            mid_fea_f = mid_fea_f.reshape(B, self.mix_dim, -1).permute(0, 2, 1)
-
-            attn = self.HTM.get_attn(mid_fea_r, mid_fea_f, local_res.reshape(B, 1, self.mix_dim),
-                                     local_former.reshape(B, 1, self.mix_dim), k=k)
-            return attn
+        self.classifier_3 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
 
     def forward(self, x, label=None, cam_label=0, view_label=None):
+        B = x.shape[0]
+
+        # ---- STEP 1: Feature Extraction ----
+        mid_fea_r, cls_score_r, global_feat_r = self.resnet(x)
+        mid_fea_f, cls_score_f, global_feat_f = self.transformer(
+            x, cam_label=cam_label, view_label=view_label
+        )
+
+        # ---- STEP 2: Feature Alignment ----
+
+        # CNN spatial tokens
+        mid_fea_r = self.res_LRU(mid_fea_r)              # [B, mix_dim, 8, 4]
+        cnn_spatial_tokens = mid_fea_r.flatten(2).permute(0, 2, 1)  # [B, 32, mix_dim]
+
+        # Transformer CLS token projection
+        query_f = self.former_LRU(
+            global_feat_f.unsqueeze(-1).unsqueeze(-1)
+        ).view(B, 1, self.mix_dim)  # [B, 1, mix_dim]
+
+        transformer_feat = query_f.squeeze(1)  # [B, mix_dim]
+
+        # ---- STEP 3: Asymmetric Cross-Attention ----
+        cross_feat, _ = self.CAF(
+            query_f,
+            cnn_spatial_tokens,
+            cnn_spatial_tokens
+        )
+        cross_feat = cross_feat.squeeze(1)  # [B, mix_dim]
+
+        # ---- STEP 4: Dynamic Gating ----
+
+        # CNN global descriptor (for gate decision)
+        cnn_global = self.gap_r(mid_fea_r).view(B, self.mix_dim)
+
+        # Concatenate Transformer + CNN global
+        gate_input = torch.cat([transformer_feat, cnn_global], dim=1)
+
+        alpha = self.gate_mlp(gate_input)  # [B, mix_dim]
+
+        # ---- STEP 5: Gated Residual Fusion ----
+        fused_feat = transformer_feat + alpha * cross_feat
+
+        # ---- STEP 6: Classification ----
+        feat_3 = self.bottleneck_3(fused_feat)
+        cls_score_3 = self.classifier_3(feat_3)
+
         if self.training:
-            B = x.shape[0]
-            mid_fea_r, global_feat_r = self.resnet(x)
-            mid_fea_f, global_feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
-            # # resnet feature conv
-            mid_fea_r = self.res_LRU(mid_fea_r)
-            local_res = self.gap_r(mid_fea_r)
-            mid_fea_r = mid_fea_r.reshape(B, self.mix_dim, -1).permute(0, 2, 1)
-            # former feature conv
-            C, H, W = self.patch_num
-            mid_fea_f = mid_fea_f.permute(0, 2, 1).reshape(B, int(C), int(H), int(W))
-            mid_fea_f = self.former_LRU(mid_fea_f)
-            local_former = self.gap_f(mid_fea_f)
-            mid_fea_f = mid_fea_f.reshape(B, self.mix_dim, -1).permute(0, 2, 1)
-
-            # mix
-            mix_r_q, mix_f_q = self.HTM(mid_fea_r, mid_fea_f, local_res.reshape(B, 1, self.mix_dim),
-                                        local_former.reshape(B, 1, self.mix_dim))
-
-            global_feat_1 = local_res.view(B, -1)
-            global_feat_2 = local_former.view(B, -1)
-            global_feat_3 = mix_r_q.squeeze()
-            global_feat_4 = mix_f_q.squeeze()
-
-            feat_1 = self.bottleneck_1(global_feat_1)
-            feat_2 = self.bottleneck_2(global_feat_2)
-            feat_3 = self.bottleneck_3(global_feat_3)
-            feat_4 = self.bottleneck_4(global_feat_4)
-
-            cls_score_1 = self.classifier_1(feat_1)
-            cls_score_2 = self.classifier_2(feat_2)
-            cls_score_3 = self.classifier_3(feat_3)
-            cls_score_4 = self.classifier_4(feat_4)
-            return cls_score_r, global_feat_r, cls_score_f, global_feat_f, cls_score_1, global_feat_1, \
-                cls_score_2, global_feat_2, cls_score_3, global_feat_3, cls_score_4, global_feat_4
+            return (
+                cls_score_r, global_feat_r,
+                cls_score_f, global_feat_f,
+                cls_score_3, fused_feat
+            )
         else:
-            B = x.shape[0]
-            mid_fea_r, cls_score_r, global_feat_r = self.resnet(x)
-            mid_fea_f, cls_score_f, global_feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
-            # resnet feature conv
-            mid_fea_r = self.res_LRU(mid_fea_r)
-            local_res = self.gap_r(mid_fea_r)
-            mid_fea_r = mid_fea_r.reshape(B, self.mix_dim, -1).permute(0, 2, 1)
-            # former feature conv
-            C, H, W = self.patch_num
-            mid_fea_f = mid_fea_f.permute(0, 2, 1).reshape(B, int(C), int(H), int(W))
-            mid_fea_f = self.former_LRU(mid_fea_f)
-            local_former = self.gap_f(mid_fea_f)
-            mid_fea_f = mid_fea_f.reshape(B, self.mix_dim, -1).permute(0, 2, 1)
+            return F.normalize(fused_feat, p=2, dim=1)
 
-            # mix
-            mix_r_q, mix_f_q = self.HTM(mid_fea_r, mid_fea_f, local_res.reshape(B, 1, self.mix_dim),
-                                        local_former.reshape(B, 1, self.mix_dim))
-
-            global_feat_1 = local_res.view(B, -1)
-            global_feat_2 = local_former.view(B, -1)
-            global_feat_3 = mix_r_q.squeeze()
-            global_feat_4 = mix_f_q.squeeze()
-
-            feat_1 = self.bottleneck_1(global_feat_1)
-            feat_2 = self.bottleneck_2(global_feat_2)
-            feat_3 = self.bottleneck_3(global_feat_3)
-            feat_4 = self.bottleneck_4(global_feat_4)
-            # print(self.test_feat)
-            if self.neck_feat == 'after':
-                pass
-            else:
-                feat_1 = global_feat_1
-                feat_2 = global_feat_2
-                feat_3 = global_feat_3
-                feat_4 = global_feat_4
-            if self.test_feat == 0:
-                return torch.cat([feat_r, feat_f, feat_1, feat_2, feat_3, feat_4], dim=-1)
-            elif self.test_feat == 1:
-                return feat_r
-            elif self.test_feat == 2:
-                return feat_f
-            elif self.test_feat == 3:
-                return feat_1
-            elif self.test_feat == 4:
-                return feat_2
-            elif self.test_feat == 5:
-                return feat_3
-            elif self.test_feat == 6:
-                return feat_4
 
 
 __factory_T_type = {

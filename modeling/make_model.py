@@ -352,7 +352,6 @@ class FusionReID(nn.Module):
         # We will use Classifier 3 & 4 for our Fused features
         self.bottleneck_3 = nn.BatchNorm1d(self.mix_dim)
         self.classifier_3 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
-        # ... (keep other bottlenecks/classifiers if you want to use original loss weights)
 
     def forward(self, x, label=None, cam_label=0, view_label=None):
         B = x.shape[0]
