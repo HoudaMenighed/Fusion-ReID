@@ -1,6 +1,6 @@
 from yacs.config import CfgNode as CN
 
-
+#paste
 _C = CN()
 # -----------------------------------------------------------------------------
 # MODEL
@@ -57,6 +57,8 @@ _C.MODEL.STRIDE_SIZE = [12, 12]
 _C.MODEL.SIE_COE = 3.0
 _C.MODEL.SIE_CAMERA = True
 _C.MODEL.SIE_VIEW = False
+_C.MODEL.NUM_PARTS = 6
+_C.MODEL.FEAT_DIM = 512
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -76,6 +78,9 @@ _C.INPUT.PIXEL_MEAN = [0.5, 0.5, 0.5]
 _C.INPUT.PIXEL_STD = [0.5, 0.5, 0.5]
 # Value of padding size
 _C.INPUT.PADDING = 10
+
+
+
 
 # -----------------------------------------------------------------------------
 # Dataset
@@ -106,7 +111,7 @@ _C.SOLVER.OPTIMIZER_NAME = "SGD"
 # Number of max epoches
 _C.SOLVER.MAX_EPOCHS = 180
 # Resume training from checkpoint
-_C.SOLVER.RESUME = True
+_C.SOLVER.RESUME = False
 # Base learning rate
 _C.SOLVER.BASE_LR = 0.005
 # Factor of learning bias
@@ -151,7 +156,7 @@ _C.SOLVER.CHECKPOINT_PERIOD = 10
 # iteration of display training log
 _C.SOLVER.LOG_PERIOD = 100
 # epoch number of validation
-_C.SOLVER.EVAL_PERIOD = 20
+_C.SOLVER.EVAL_PERIOD = 10
 
 # Number of images per batch
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
