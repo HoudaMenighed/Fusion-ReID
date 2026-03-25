@@ -143,11 +143,7 @@ class build_resnet(nn.Module):
             self.base.load_param(model_path)
             print('Loading pretrained ImageNet model......from {}'.format(model_path))
 
-        # --- SAPH-Net INTEGRATION START ---
-        # 2. Add the SAPH block (Multi-Scale + Parallel CBAM)
-        # Ensure SAPH_MultiScale_CBAM is imported or defined in the same file
         self.saph_block = SAPH_MultiScale_CBAM(self.in_planes)
-        # --- SAPH-Net INTEGRATION END ---
 
         self.gap = GeM()
         self.num_classes = num_classes
@@ -160,14 +156,11 @@ class build_resnet(nn.Module):
         self.bottleneck.apply(weights_init_kaiming)
 
     def forward(self, x, cam_label=None, view_label=None, label=None):
-        # 1. Extract raw features from ResNet (typically [B, 2048, 16, 8] or [B, 2048, 8, 4])
         mid_fea = self.base(x)
 
-        # 2. Apply SAPH refinement (Multi-Scale + CBAM)
         # mid_fea_refined will be used for both global pooling and future part-masking
         mid_fea_refined = self.saph_block(mid_fea)
 
-        # 3. Global Pooling on the REFINED features
         global_feat = self.gap(mid_fea_refined)
         global_feat = global_feat.view(global_feat.shape[0], -1)
 
@@ -181,7 +174,6 @@ class build_resnet(nn.Module):
             if self.mode == 0:
                 return mid_fea_refined, cls_score, global_feat
             else:
-                # Return the refined multi-scale features for the Transformer/Fusion branch
                 return mid_fea_refined, cls_score, global_feat
         else:
             cls_score = None
@@ -321,7 +313,6 @@ class LocalRefinementUnits(nn.Module):
 class FusionReID(nn.Module):
     def __init__(self, num_classes, cfg, camera_num, view_num, factory):
         super(FusionReID, self).__init__()
-        # 1. Your Modified SAPH-ResNet and standard Transformer
         self.resnet = build_resnet(num_classes, cfg)
         self.transformer = build_transformer(num_classes, cfg, camera_num, view_num, factory)
 
@@ -332,59 +323,41 @@ class FusionReID(nn.Module):
 
         self.mix_dim = cfg.MODEL.MIX_DIM  # Usually 512 or 768
 
-        # 2. Projection Layers (Alignment)
-        # res_LRU: Projects SAPH-CNN (2048) -> mix_dim
         self.res_LRU = LocalRefinementUnits(dim=2048, out_dim=self.mix_dim)
 
-        # former_LRU: Projects Transformer (768) -> mix_dim
         dim_l = 384 if '14' in cfg.MODEL.TRANSFORMER_TYPE else 768
         self.former_LRU = LocalRefinementUnits(dim=dim_l, out_dim=self.mix_dim)
 
-        # 3. CAF: Cross-Attention Fusion (The SAPH-Net way)
-        # Query = Transformer, Key/Value = CNN
         self.CAF = nn.MultiheadAttention(embed_dim=self.mix_dim, num_heads=8, batch_first=True)
 
         # GAP for CNN spatial features
         self.gap_f = GeM()
         self.gap_r = GeM()
 
-        # 4. Multi-head Classifiers (Keeping the project's structure for multi-loss training)
-        # We will use Classifier 3 & 4 for our Fused features
         self.bottleneck_3 = nn.BatchNorm1d(self.mix_dim)
         self.classifier_3 = nn.Linear(self.mix_dim, self.num_classes, bias=False)
 
     def forward(self, x, label=None, cam_label=0, view_label=None):
         B = x.shape[0]
 
-        # STEP 1: Branch Extraction
-        # mid_fea_r is your SAPH-Refined [B, 2048, 8, 4] feature map
+       
         mid_fea_r, cls_score_r, global_feat_r = self.resnet(x)
-        # mid_fea_f is the Transformer token sequence [B, Tokens, 768]
         mid_fea_f, cls_score_f, global_feat_f = self.transformer(x, cam_label=cam_label, view_label=view_label)
 
-        # STEP 2: Feature Alignment
-        # Project CNN to mix_dim and flatten spatial dims [B, 32, mix_dim]
         mid_fea_r = self.res_LRU(mid_fea_r)  # [B, mix_dim, 8, 4]
         cnn_spatial_tokens = mid_fea_r.flatten(2).permute(0, 2, 1)  # [B, 32, mix_dim]
 
-        # Project Transformer Global Feat to mix_dim [B, 1, mix_dim]
-        # We use the global_feat_f (CLS token) as our Query
         query_f = self.former_LRU(global_feat_f.unsqueeze(-1).unsqueeze(-1)).view(B, 1, self.mix_dim)
 
-        # STEP 3: Cross-Attention Fusion (CAF)
-        # Query: Transformer Global | Key/Value: CNN Multi-Scale Spatial
         fused_feat, _ = self.CAF(query_f, cnn_spatial_tokens, cnn_spatial_tokens)
         fused_feat = fused_feat.squeeze(1)  # [B, mix_dim]
 
-        # STEP 4: Classification & Return
         feat_3 = self.bottleneck_3(fused_feat)
         cls_score_3 = self.classifier_3(feat_3)
 
         if self.training:
-            # We return the CNN/Trans individual scores + the new Fused score
             return cls_score_r, global_feat_r, cls_score_f, global_feat_f, cls_score_3, fused_feat
         else:
-            # For testing, we usually concatenate or just use the fused feature
             return F.normalize(fused_feat, p=2, dim=1)
 
 
